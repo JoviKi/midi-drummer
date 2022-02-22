@@ -1,15 +1,16 @@
+#!/usr/bin/env python3
 ##### Source: https://automaticaddison.com/how-to-perform-pose-estimation-using-an-aruco-marker/ #####
 
-from __future__ import print_function
 from inspect import ArgSpec 
 import cv2 as cv
 import numpy as np 
-from scipy.spatial.transform import Rotation as R
-import math 
+from scipy.spatial.transform import Rotation
 import sys
+import os
 
-import tf
+import tf2_ros
 import rospy
+from geometry_msgs.msg import TransformStamped
 
  
 # Dictionary that was used to generate the ArUco marker
@@ -40,7 +41,8 @@ ARUCO_DICT = {
 aruco_marker_side_length = 0.08
  
 # Calibration parameters yaml file
-camera_calibration_parameters_filename = '.\Pose_estimation\calibration_chessboard_webcam.yaml'
+SCRIPTDIR = os.path.dirname(__file__)
+camera_calibration_parameters_filename = os.path.join(SCRIPTDIR, '..', '..', '..', 'cal.yaml')
 
 instruments_dictionary = {
   35: 'Bass Drum 2',
@@ -118,7 +120,7 @@ instruments_dictionary = {
 if __name__ == '__main__':
   rospy.init_node('aruco_tf_broadcaster')
   print(__doc__)
-  br = tf.TransformBroadcaster()
+  br = tf2_ros.transform_broadcaster.TransformBroadcaster()
 
   """
   Main method of the program.
@@ -145,7 +147,7 @@ if __name__ == '__main__':
   # Start the video stream
   cap = cv.VideoCapture(0)
    
-  while(True):
+  while(not rospy.is_shutdown()):
   
     # Capture frame-by-frame
     # This method returns True/False as well
@@ -179,46 +181,30 @@ if __name__ == '__main__':
       # z-axis points straight ahead away from your eye, out of the camera
       for i, marker_id in enumerate(marker_ids):
        
-        # Store the translation (i.e. position) information
-        transform_translation_x = tvecs[i][0][0]
-        transform_translation_y = tvecs[i][0][1]
-        transform_translation_z = tvecs[i][0][2]
- 
         # Store the rotation information
         rotation_matrix = np.eye(4)
         rotation_matrix[0:3, 0:3] = cv.Rodrigues(np.array(rvecs[i][0]))[0]
-        r = R.from_matrix(rotation_matrix[0:3, 0:3])
+        r = Rotation.from_matrix(rotation_matrix[0:3, 0:3])
         quat = r.as_quat()   
          
-        # Quaternion format     
-        transform_rotation_x = quat[0] 
-        transform_rotation_y = quat[1] 
-        transform_rotation_z = quat[2] 
-        transform_rotation_w = quat[3] 
-         
-        ## Euler angle format in radians
-        #roll_x, pitch_y, yaw_z = euler_from_quaternion(transform_rotation_x, 
-        #                                               transform_rotation_y, 
-        #                                               transform_rotation_z, 
-        #                                               transform_rotation_w)
-         
-        #roll_x = math.degrees(roll_x)
-        #pitch_y = math.degrees(pitch_y)
-        #yaw_z = math.degrees(yaw_z)
-        #print("Marker-ID: {}".format(marker_id))
-        #print("transform_translation_x: {}".format(transform_translation_x))
-        #print("transform_translation_y: {}".format(transform_translation_y))
-        #print("transform_translation_z: {}".format(transform_translation_z))
-        #print("roll_x: {}".format(roll_x))
-        #print("pitch_y: {}".format(pitch_y))
-        #print("yaw_z: {}".format(yaw_z))
-        #print()
+        if marker_id[0] not in instruments_dictionary:
+          rospy.logdebug(f'AruCo id {marker_id[0]} not in instruments dictionary.')
+        else:
 
-        br.sendTransform((transform_translation_x,transform_translation_y, transform_translation_z), 
-                        (transform_rotation_x, transform_rotation_y, transform_rotation_z, transform_rotation_w),
-                        rospy.Time.now(),
-                        instruments_dictionary[marker_id],
-                        "camera")
+          t = TransformStamped()
+          t.header.frame_id = 'camera'
+          t.header.stamp = rospy.Time.now()
+          t.child_frame_id = instruments_dictionary[marker_id[0]]
+          t.transform.translation.x = tvecs[i][0][0]
+          t.transform.translation.y = tvecs[i][0][1]
+          t.transform.translation.z = tvecs[i][0][2]
+
+          t.transform.rotation.x = quat[0]
+          t.transform.rotation.y = quat[1]
+          t.transform.rotation.z = quat[2]
+          t.transform.rotation.w = quat[3]
+
+          br.sendTransform([t])
 
         # Draw the axes on the marker
         cv.aruco.drawAxis(frame, mtx, dst, rvecs[i], tvecs[i], 0.03)
