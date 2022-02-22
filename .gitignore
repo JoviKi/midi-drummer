@@ -1,0 +1,7 @@
+# catkin workspace
+build
+devel
+logs
+
+.catkin_tools
+!.catkin_tools/VERSION
