@@ -1,0 +1,236 @@
+##### Source: https://automaticaddison.com/how-to-perform-pose-estimation-using-an-aruco-marker/ #####
+
+from __future__ import print_function
+from inspect import ArgSpec 
+import cv2 as cv
+import numpy as np 
+from scipy.spatial.transform import Rotation as R
+import math 
+import sys
+
+import tf
+import rospy
+
+ 
+# Dictionary that was used to generate the ArUco marker
+aruco_dictionary_name = "DICT_4X4_50"
+ 
+# The different ArUco dictionaries built into the OpenCV library. 
+ARUCO_DICT = {
+  "DICT_4X4_50": cv.aruco.DICT_4X4_50,
+  "DICT_4X4_100": cv.aruco.DICT_4X4_100,
+  "DICT_4X4_250": cv.aruco.DICT_4X4_250,
+  "DICT_4X4_1000": cv.aruco.DICT_4X4_1000,
+  "DICT_5X5_50": cv.aruco.DICT_5X5_50,
+  "DICT_5X5_100": cv.aruco.DICT_5X5_100,
+  "DICT_5X5_250": cv.aruco.DICT_5X5_250,
+  "DICT_5X5_1000": cv.aruco.DICT_5X5_1000,
+  "DICT_6X6_50": cv.aruco.DICT_6X6_50,
+  "DICT_6X6_100": cv.aruco.DICT_6X6_100,
+  "DICT_6X6_250": cv.aruco.DICT_6X6_250,
+  "DICT_6X6_1000": cv.aruco.DICT_6X6_1000,
+  "DICT_7X7_50": cv.aruco.DICT_7X7_50,
+  "DICT_7X7_100": cv.aruco.DICT_7X7_100,
+  "DICT_7X7_250": cv.aruco.DICT_7X7_250,
+  "DICT_7X7_1000": cv.aruco.DICT_7X7_1000,
+  "DICT_ARUCO_ORIGINAL": cv.aruco.DICT_ARUCO_ORIGINAL
+}
+ 
+# Side length of the ArUco marker in meters 
+aruco_marker_side_length = 0.08
+ 
+# Calibration parameters yaml file
+camera_calibration_parameters_filename = '.\Pose_estimation\calibration_chessboard_webcam.yaml'
+
+instruments_dictionary = {
+  35: 'Bass Drum 2',
+  36: 'Bass Drum 1',
+  37: 'Side Stick',
+  38: 'Snare Drum 1',
+  39: 'Hand Clap',
+  40: 'Snare Drum 2',
+  41: 'Low Tom 2',
+  42: 'Closed Hi-hat',
+  43: 'Low Tom 1',
+  44: 'Pedal Hi-hat',
+  45: 'Mid Tom 2',
+  46: 'Open Hi-hat',
+  47: 'Mid Tom 1',
+  48: 'High Tom 2',
+  49: 'Crash Cymbal 1',
+  50: 'High Tom 1',
+  51: 'Ride Cymbal 1',
+  52: 'Chinese Cymbal',
+  53: 'Ride Bell',
+  54: 'Tambourine',
+  55: 'Splash Cymbal',
+  56: 'Cowbell',
+  57: 'Crash Cymbal 2',
+  58: 'Vibra Slap',
+
+  59: 'Ride Cymbal 2',
+  60: 'High Bongo',
+  61: 'Low Bongo',
+  62: 'Mute High Conga',
+  63: 'Open High Conga',
+  64: 'Low Conga',
+  65: 'High Timbale',
+  66: 'Low Timbale',
+  67: 'High Agogo',
+  68: 'Low Agogo',
+  69: 'Cabasa',
+  70: 'Maracas',
+  71: 'Short Whistle',
+  72: 'Long Whistle',
+  73: 'Short Guiro',
+  74: 'Long Guiro',
+  75: 'Claves',
+  76: 'High Wood Block',
+  77: 'Low Wood Block',
+  78: 'Mute Cuica',
+  79: 'Open Cuica',
+  80: 'Mute Triangle',
+  81: 'Open Triangle' }
+ 
+#def euler_from_quaternion(x, y, z, w):
+#  """
+#  Convert a quaternion into euler angles (roll, pitch, yaw)
+#  roll is rotation around x in radians (counterclockwise)q
+#  pitch is rotation around y in radians (counterclockwise)
+#  yaw is rotation around z in radians (counterclockwise)
+#  """
+#  t0 = +2.0 * (w * x + y * z)
+#  t1 = +1.0 - 2.0 * (x * x + y * y)
+#  roll_x = math.atan2(t0, t1)
+#      
+#  t2 = +2.0 * (w * y - z * x)
+#  t2 = +1.0 if t2 > +1.0 else t2
+#  t2 = -1.0 if t2 < -1.0 else t2
+#  pitch_y = math.asin(t2)
+#      
+#  t3 = +2.0 * (w * z + x * y)
+#  t4 = +1.0 - 2.0 * (y * y + z * z)
+#  yaw_z = math.atan2(t3, t4)
+#      
+#  return roll_x, pitch_y, yaw_z # in radians
+ 
+   
+if __name__ == '__main__':
+  rospy.init_node('aruco_tf_broadcaster')
+  print(__doc__)
+  br = tf.TransformBroadcaster()
+
+  """
+  Main method of the program.
+  """
+  # Check that we have a valid ArUco marker
+  if ARUCO_DICT.get(aruco_dictionary_name, None) is None:
+    print("[INFO] ArUCo tag of '{}' is not supported".format(
+      ArgSpec["type"]))
+    sys.exit(0)
+ 
+  # Load the camera parameters from the saved file
+  cv_file = cv.FileStorage(
+    camera_calibration_parameters_filename, cv.FILE_STORAGE_READ) 
+  mtx = cv_file.getNode('K').mat()
+  dst = cv_file.getNode('D').mat()
+  cv_file.release()
+     
+  # Load the ArUco dictionary
+  print("[INFO] detecting '{}' markers...".format(
+    aruco_dictionary_name))
+  this_aruco_dictionary = cv.aruco.Dictionary_get(ARUCO_DICT[aruco_dictionary_name])
+  this_aruco_parameters = cv.aruco.DetectorParameters_create()
+   
+  # Start the video stream
+  cap = cv.VideoCapture(0)
+   
+  while(True):
+  
+    # Capture frame-by-frame
+    # This method returns True/False as well
+    # as the video frame.
+    ret, frame = cap.read()  
+     
+    # Detect ArUco markers in the video frame
+    (corners, marker_ids, rejected) = cv.aruco.detectMarkers(
+      frame, this_aruco_dictionary, parameters=this_aruco_parameters,
+      cameraMatrix=mtx, distCoeff=dst)
+       
+    # Check that at least one ArUco marker was detected
+    if marker_ids is not None:
+ 
+      # Draw a square around detected markers in the video frame
+      cv.aruco.drawDetectedMarkers(frame, corners, marker_ids)
+       
+      # Get the rotation and translation vectors
+      rvecs, tvecs, obj_points = cv.aruco.estimatePoseSingleMarkers(
+        corners,
+        aruco_marker_side_length,
+        mtx,
+        dst)
+         
+      # Print the pose for the ArUco marker
+      # The pose of the marker is with respect to the camera lens frame.
+      # Imagine you are looking through the camera viewfinder, 
+      # the camera lens frame's:
+      # x-axis points to the right
+      # y-axis points straight down towards your toes
+      # z-axis points straight ahead away from your eye, out of the camera
+      for i, marker_id in enumerate(marker_ids):
+       
+        # Store the translation (i.e. position) information
+        transform_translation_x = tvecs[i][0][0]
+        transform_translation_y = tvecs[i][0][1]
+        transform_translation_z = tvecs[i][0][2]
+ 
+        # Store the rotation information
+        rotation_matrix = np.eye(4)
+        rotation_matrix[0:3, 0:3] = cv.Rodrigues(np.array(rvecs[i][0]))[0]
+        r = R.from_matrix(rotation_matrix[0:3, 0:3])
+        quat = r.as_quat()   
+         
+        # Quaternion format     
+        transform_rotation_x = quat[0] 
+        transform_rotation_y = quat[1] 
+        transform_rotation_z = quat[2] 
+        transform_rotation_w = quat[3] 
+         
+        ## Euler angle format in radians
+        #roll_x, pitch_y, yaw_z = euler_from_quaternion(transform_rotation_x, 
+        #                                               transform_rotation_y, 
+        #                                               transform_rotation_z, 
+        #                                               transform_rotation_w)
+         
+        #roll_x = math.degrees(roll_x)
+        #pitch_y = math.degrees(pitch_y)
+        #yaw_z = math.degrees(yaw_z)
+        #print("Marker-ID: {}".format(marker_id))
+        #print("transform_translation_x: {}".format(transform_translation_x))
+        #print("transform_translation_y: {}".format(transform_translation_y))
+        #print("transform_translation_z: {}".format(transform_translation_z))
+        #print("roll_x: {}".format(roll_x))
+        #print("pitch_y: {}".format(pitch_y))
+        #print("yaw_z: {}".format(yaw_z))
+        #print()
+
+        br.sendTransform((transform_translation_x,transform_translation_y, transform_translation_z), 
+                        (transform_rotation_x, transform_rotation_y, transform_rotation_z, transform_rotation_w),
+                        rospy.Time.now(),
+                        instruments_dictionary[marker_id],
+                        "camera")
+
+        # Draw the axes on the marker
+        cv.aruco.drawAxis(frame, mtx, dst, rvecs[i], tvecs[i], 0.03)
+     
+    # Display the resulting frame
+    # cv.imshow('frame',frame)
+          
+    # If "q" is pressed on the keyboard, 
+    # exit this loop
+    if cv.waitKey(1) & 0xFF == ord('q'):
+      break
+  
+  # Close down the video stream
+  cap.release()
+  cv.destroyAllWindows()

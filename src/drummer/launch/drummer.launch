@@ -1,0 +1,9 @@
+<launch>
+
+    <node name="midi_translation" pkg="drummer" type="midi_translation" output="screen">
+    </node>
+
+    <node name="pose_estimation" pkg="drummer" type="pose_estimation" output="screen">
+    </node>
+    
+</launch>

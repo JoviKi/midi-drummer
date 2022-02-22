@@ -1,0 +1,175 @@
+from re import I
+from mido import MidiFile
+import os
+
+from matplotlib import pyplot as plt
+from matplotlib import patches
+from matplotlib import colors
+import pretty_midi
+
+from time import sleep
+import time
+
+# ROS imports
+import rospy
+import tf2_ros
+import tf2_geometry_msgs
+from geometry_msgs.msg import PoseStamped 
+
+# creating dictionary for translation of number of note to name of instrument
+instruments_dictionary = {
+35: 'Bass Drum 2',
+36: 'Bass Drum 1',
+37: 'Side Stick',
+38: 'Snare Drum 1',
+39: 'Hand Clap',
+40: 'Snare Drum 2',
+41: 'Low Tom 2',
+42: 'Closed Hi-hat',
+43: 'Low Tom 1',
+44: 'Pedal Hi-hat',
+45: 'Mid Tom 2',
+46: 'Open Hi-hat',
+47: 'Mid Tom 1',
+48: 'High Tom 2',
+49: 'Crash Cymbal 1',
+50: 'High Tom 1',
+51: 'Ride Cymbal 1',
+52: 'Chinese Cymbal',
+53: 'Ride Bell',
+54: 'Tambourine',
+55: 'Splash Cymbal',
+56: 'Cowbell',
+57: 'Crash Cymbal 2',
+58: 'Vibra Slap',
+
+59: 'Ride Cymbal 2',
+60: 'High Bongo',
+61: 'Low Bongo',
+62: 'Mute High Conga',
+63: 'Open High Conga',
+64: 'Low Conga',
+65: 'High Timbale',
+66: 'Low Timbale',
+67: 'High Agogo',
+68: 'Low Agogo',
+69: 'Cabasa',
+70: 'Maracas',
+71: 'Short Whistle',
+72: 'Long Whistle',
+73: 'Short Guiro',
+74: 'Long Guiro',
+75: 'Claves',
+76: 'High Wood Block',
+77: 'Low Wood Block',
+78: 'Mute Cuica',
+79: 'Open Cuica',
+80: 'Mute Triangle',
+81: 'Open Triangle' }
+
+# printing name and type, aswell as numbers of tracks and messages of file
+file_name = 'AC_DC_-_Highway_to_hell.mid'
+SCRIPTDIR = os.path.dirname(__file__)
+
+
+if __name__ == '__main__':
+    rospy.init_node('midi_translation')
+
+    ##### Step 1: Load the Midi File #####
+
+    mid = MidiFile(os.path.join(SCRIPTDIR, '..', 'MIDI', 'samples', file_name), clip=True) ### Klappt nicht, Markus fragen ###
+    #print(mid)
+
+    # removing duplicates of tracks
+    message_numbers = []
+    duplicates = []
+
+    for track in mid.tracks:                    # searching track by track in MIDI file
+        if len(track) in message_numbers:       # if number of messages in a track equals number of messages from a previous track
+            duplicates.append(track)            # then add to duplicates
+        else:
+            message_numbers.append(len(track))
+
+    for track in duplicates:                    # remove the duplicates
+        mid.tracks.remove(track)
+
+
+    wrong_tracks = []
+    # finding the track of the drums in MIDI files via channel    
+    for track in mid.tracks:                  # going through the tracks of the file
+        for msg in track:                                   # going through the messages in each track
+            if not msg.is_meta and (msg.channel != 9):      # checking non-meta messages and looking for the messages with channel = 9
+                wrong_tracks.append(track)
+                break
+
+    for track in wrong_tracks:
+        mid.tracks.remove(track)
+
+    new_file_name = 'drums_only_{}'.format(file_name)
+    mid.save('.\\MIDI\\samples\\{}'.format(new_file_name))
+
+
+    ##### Source: https://www.audiolabs-erlangen.de/resources/MIR/FMP/C1/C1S2_MIDI.html #####
+
+    midi_data = pretty_midi.PrettyMIDI('.\\MIDI\\samples\\{}'.format(new_file_name))
+    midi_list = []
+
+    # creating a list with the information about start, end, pitch, velocity and name of instrument of every 'note' (part of the drums) of the instrument
+    for instrument in midi_data.instruments:
+        for note in instrument.notes:
+            start = note.start
+            end = note.end
+            pitch = note.pitch
+            velocity = note.velocity
+            midi_list.append([start, end, pitch, velocity, instrument.name])
+            
+    midi_list = sorted(midi_list, key=lambda x: (x[0], x[2]))
+
+    ##### Step 2: Iterate through all midi notes and publish target poses #####
+
+    # printing the name of the 'note' of the instrument in the moment it is actually played
+    stamp = time.time()
+    last_time = midi_list[0][0]
+
+    tf_buffer = tf2_ros.Buffer()
+    tf_listener = tf2_ros.TransformListener(tf_buffer)
+
+    drum_publisher = rospy.Publisher('hit', PoseStamped, tcp_nodelay=True)
+
+    for k, line in enumerate(midi_list):
+
+        start, end, pitch, velocity, instrument = line
+        component_name = instruments_dictionary[pitch]
+
+        ##### Part 1: Finding the target pose #####
+        
+        target_pose = PoseStamped()
+        target_pose.header.frame_id = component_name
+        target_pose.header.stamp = rospy.Time.now()
+        target_pose.pose.position.x = 0
+        target_pose.pose.position.y = 0
+        target_pose.pose.position.z = 0
+        target_pose.pose.orientation.w = 1
+
+        try:
+            trans = tf_buffer.lookup_transform('robot', component_name, rospy.Time.now())
+            target_pose = tf2_geometry_msgs.do_transform_pose(target_pose, trans)
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            rospy.logerr(f'Cannot find {component_name}')
+
+        ##### Part 2: Timing of the hit #####
+
+        # wait until play instrument
+        time_to_delay = midi_list[k][0] - last_time
+        next_stamp = stamp + time_to_delay
+        # TODO: prepare arm to hit drum
+        sleep(max(next_stamp - time.time(), 0))
+
+        # play instrument
+        drum_publisher.publish(target_pose)
+
+        # prepare for next iteration
+        stamp = next_stamp
+        last_time = midi_list[k][0]
+
+
