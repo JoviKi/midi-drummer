@@ -5,5 +5,9 @@ logs
 
 .catkin_tools/**
 
+# ignore calibration images
+*.jpg
+cal.yaml
+
 # ignore vscode
 .vscode
