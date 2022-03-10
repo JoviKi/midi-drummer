@@ -78,8 +78,7 @@ if __name__ == '__main__':
 
     ##### Step 1: Load the Midi File #####
 
-    mid = MidiFile(os.path.join(SCRIPTDIR, '..', 'MIDI', 'samples', file_name), clip=True) ### Klappt nicht, Markus fragen ###
-    #print(mid)
+    mid = MidiFile(os.path.join(SCRIPTDIR, '..', 'MIDI', 'samples', file_name), clip=True) 
 
     # removing duplicates of tracks
     message_numbers = []
