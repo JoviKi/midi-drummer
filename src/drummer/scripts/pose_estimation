@@ -14,7 +14,7 @@ from geometry_msgs.msg import TransformStamped
 
  
 # Dictionary that was used to generate the ArUco marker
-aruco_dictionary_name = "DICT_4X4_50"
+aruco_dictionary_name = "DICT_4X4_100"
  
 # The different ArUco dictionaries built into the OpenCV library. 
 ARUCO_DICT = {
