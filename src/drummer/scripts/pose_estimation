@@ -11,10 +11,10 @@ import os
 import tf2_ros
 import rospy
 from geometry_msgs.msg import TransformStamped
-
+import imutils
  
 # Dictionary that was used to generate the ArUco marker
-aruco_dictionary_name = "DICT_4X4_50"
+aruco_dictionary_name = "DICT_4X4_100"
  
 # The different ArUco dictionaries built into the OpenCV library. 
 ARUCO_DICT = {
@@ -124,7 +124,7 @@ if __name__ == '__main__':
   this_aruco_parameters = cv.aruco.DetectorParameters_create()
    
   # Start the video stream
-  cap = cv.VideoCapture(0)
+  cap = cv.VideoCapture(6)   #'6' it is for the robominds camera at the ur10e
    
   while(not rospy.is_shutdown()):
   
@@ -189,6 +189,7 @@ if __name__ == '__main__':
         cv.aruco.drawAxis(frame, mtx, dst, rvecs[i], tvecs[i], 0.03)
      
     # Display the resulting frame
+    frame = imutils.resize(frame, width=1500)
     cv.imshow('frame', frame)
           
     # If "q" is pressed on the keyboard, 
