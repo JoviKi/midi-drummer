@@ -145,6 +145,7 @@ class TrajectoryClient:
 
         # The following list are arbitrary positions
         # Change to your own needs if desired
+        ### a '1' in the first place of the quaternion information brings the drum stick into a horizontal position
         pose_list = [
             geometry_msgs.Pose(
                 geometry_msgs.Vector3(0.4, -0.1, 0.4), geometry_msgs.Quaternion(0, 0, 0, 1)
