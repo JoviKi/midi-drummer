@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 from re import I
+from turtle import pos
 from mido import MidiFile
 import os
+import sys
 
 from matplotlib import pyplot as plt
 from matplotlib import patches
@@ -15,7 +17,20 @@ import time
 import rospy
 import tf2_ros
 import tf2_geometry_msgs
-from geometry_msgs.msg import PoseStamped 
+from geometry_msgs.msg import PoseStamped,Pose
+
+# Robot interface
+import actionlib
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+from trajectory_msgs.msg import JointTrajectoryPoint
+from controller_manager_msgs.srv import SwitchControllerRequest, SwitchController
+from controller_manager_msgs.srv import LoadControllerRequest, LoadController
+import geometry_msgs.msg as geometry_msgs
+from cartesian_control_msgs.msg import (
+    FollowCartesianTrajectoryAction,
+    FollowCartesianTrajectoryGoal,
+    CartesianTrajectoryPoint,
+)
 
 # creating dictionary for translation of number of note to name of instrument
 instruments_dictionary = {
@@ -72,12 +87,103 @@ instruments_dictionary = {
 file_name = 'AC_DC_-_Highway_to_hell.mid'
 SCRIPTDIR = os.path.dirname(__file__)
 
+class TrajectoryClient:
+    """Small trajectory client to test a joint trajectory"""
+
+    # All of those controllers can be used to execute joint-based trajectories.
+    # The scaled versions should be preferred over the non-scaled versions.
+    JOINT_TRAJECTORY_CONTROLLERS = [
+        "scaled_pos_joint_traj_controller",
+        "scaled_vel_joint_traj_controller",
+        "pos_joint_traj_controller",
+        "vel_joint_traj_controller",
+        "forward_joint_traj_controller",
+    ]
+
+    # All of those controllers can be used to execute Cartesian trajectories.
+    # The scaled versions should be preferred over the non-scaled versions.
+    CARTESIAN_TRAJECTORY_CONTROLLERS = [
+        "pose_based_cartesian_traj_controller",
+        "joint_based_cartesian_traj_controller",
+        "forward_cartesian_traj_controller",
+    ]
+
+    # We'll have to make sure that none of these controllers are running, as they will
+    # be conflicting with the joint trajectory controllers
+    CONFLICTING_CONTROLLERS = ["joint_group_vel_controller", "twist_controller"]
+
+    def __init__(self):
+        rospy.init_node("test_move")
+
+        timeout = rospy.Duration(5)
+        self.switch_srv = rospy.ServiceProxy(
+            "controller_manager/switch_controller", SwitchController
+        )
+        self.load_srv = rospy.ServiceProxy("controller_manager/load_controller", LoadController)
+        try:
+            self.switch_srv.wait_for_service(timeout.to_sec())
+        except rospy.exceptions.ROSException as err:
+            rospy.logerr("Could not reach controller switch service. Msg: {}".format(err))
+            sys.exit(-1)
+
+        self.cartesian_trajectory_controller = self.CARTESIAN_TRAJECTORY_CONTROLLERS[0]
+
+    def send_cartesian_trajectory(self, poses: list[Pose], timestamps: list[float]):
+        """Creates a Cartesian trajectory and sends it using the selected action server"""
+        self.switch_controller(self.cartesian_trajectory_controller)
+
+        # make sure the correct controller is loaded and activated
+        goal = FollowCartesianTrajectoryGoal()
+        trajectory_client = actionlib.SimpleActionClient(
+            "{}/follow_cartesian_trajectory".format(self.cartesian_trajectory_controller),
+            FollowCartesianTrajectoryAction,
+        )
+
+        assert len(poses) == len(timestamps)
+        for i, pose in enumerate(poses):
+            point = CartesianTrajectoryPoint()
+            point.pose = pose
+            point.time_from_start = rospy.Duration(timestamps[i])
+            goal.trajectory.points.append(point)
+
+        rospy.loginfo(
+            "Executing trajectory using the {}".format(self.cartesian_trajectory_controller)
+        )
+        trajectory_client.send_goal(goal)
+        trajectory_client.wait_for_result()
+
+        result = trajectory_client.get_result()
+
+        rospy.loginfo("Trajectory execution finished in state {}".format(result.error_code))
+
+    def switch_controller(self, target_controller):
+        """Activates the desired controller and stops all others from the predefined list above"""
+        other_controllers = (
+            self.JOINT_TRAJECTORY_CONTROLLERS
+            + self.CARTESIAN_TRAJECTORY_CONTROLLERS
+            + self.CONFLICTING_CONTROLLERS
+        )
+
+        other_controllers.remove(target_controller)
+
+        srv = LoadControllerRequest()
+        srv.name = target_controller
+        self.load_srv(srv)
+
+        srv = SwitchControllerRequest()
+        srv.stop_controllers = other_controllers
+        srv.start_controllers = [target_controller]
+        srv.strictness = SwitchControllerRequest.BEST_EFFORT
+        self.switch_srv(srv)
+
+
 
 if __name__ == '__main__':
     rospy.init_node('midi_translation')
 
     ##### Step 1: Load the Midi File #####
 
+    t_client = TrajectoryClient()
     mid = MidiFile(os.path.join(SCRIPTDIR, '..', 'MIDI', 'samples', file_name), clip=True) 
 
     # removing duplicates of tracks
@@ -136,6 +242,8 @@ if __name__ == '__main__':
 
     drum_publisher = rospy.Publisher('hit', PoseStamped, tcp_nodelay=True, queue_size=100)
 
+    poses = []
+    timestamps = []
     for k, line in enumerate(midi_list):
         if rospy.is_shutdown():
             break
@@ -149,28 +257,27 @@ if __name__ == '__main__':
         target_pose.header.stamp = rospy.Time.now()
         target_pose.pose.position.x = 0
         target_pose.pose.position.y = 0
-        target_pose.pose.position.z = 0
+        target_pose.pose.position.z = 0.2
+        target_pose.pose.orientation.x = 1
+        target_pose.pose.orientation.y = 0
+        target_pose.pose.orientation.z = 0
         target_pose.pose.orientation.w = 1
 
         try:
-            trans = tf_buffer.lookup_transform('camera', component_name, rospy.Time(0))
+            trans = tf_buffer.lookup_transform('base', component_name, rospy.Time(0))
             target_pose = tf2_geometry_msgs.do_transform_pose(target_pose, trans)
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             rospy.logerr(f'Cannot find {component_name}: {e}')
 
         ##### Part 2: Timing of the hit #####
+        hit_time = midi_list[k][0]
 
-        # wait until play instrument
-        time_to_delay = midi_list[k][0] - last_time
-        next_stamp = stamp + time_to_delay
-        # TODO: prepare arm to hit drum
-        sleep(max(next_stamp - time.time(), 0))
+        ##### Part 3: fill the trajectory #####
+        poses.append(target_pose)
+        timestamps.append(hit_time)
 
-        # play instrument
-        drum_publisher.publish(target_pose)
+    # Start playing by sending the trajectory to the robot
+    t_client.send_cartesian_trajectory(poses=poses, timestamps=timestamps)
 
-        # prepare for next iteration
-        stamp = next_stamp
-        last_time = midi_list[k][0]
 
 
