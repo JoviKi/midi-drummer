@@ -3,16 +3,21 @@
 
 from inspect import ArgSpec 
 import cv2 as cv
-import numpy as np 
+import numpy as np
 from scipy.spatial.transform import Rotation
 import sys
 import os
 
+# Ros imports
+from geometry_msgs.msg import PoseStamped
 import tf2_ros
 import rospy
-from geometry_msgs.msg import TransformStamped
 import imutils
  
+# Local imports
+from drummer.msg import PoseStampedArray
+
+
 # Dictionary that was used to generate the ArUco marker
 aruco_dictionary_name = "DICT_4X4_100"
  
@@ -97,13 +102,13 @@ instruments_dictionary = {
  
    
 if __name__ == '__main__':
-  rospy.init_node('aruco_tf_broadcaster')
-  print(__doc__)
-  br = tf2_ros.transform_broadcaster.TransformBroadcaster()
-
   """
   Main method of the program.
   """
+
+  rospy.init_node('aruco_tf_broadcaster')
+  print(__doc__)
+
   # Check that we have a valid ArUco marker
   if ARUCO_DICT.get(aruco_dictionary_name, None) is None:
     print("[INFO] ArUCo tag of '{}' is not supported".format(
@@ -125,7 +130,8 @@ if __name__ == '__main__':
    
   # Start the video stream
   cap = cv.VideoCapture(6)   #'6' it is for the robominds camera at the ur10e
-   
+  
+  aruco_poses_pub = rospy.Publisher('aruco_poses', PoseStampedArray, queue_size=1, latch=False)
   while(not rospy.is_shutdown()):
   
     # Capture frame-by-frame
@@ -151,13 +157,14 @@ if __name__ == '__main__':
         mtx,
         dst)
          
-      # Print the pose for the ArUco marker
+      ##### Prepare aruco poses for publishing #####
       # The pose of the marker is with respect to the camera lens frame.
       # Imagine you are looking through the camera viewfinder, 
       # the camera lens frame's:
       # x-axis points to the right
       # y-axis points straight down towards your toes
       # z-axis points straight ahead away from your eye, out of the camera
+      aruco_poses = PoseStampedArray()
       for i, marker_id in enumerate(marker_ids):
        
         # Store the rotation information
@@ -170,20 +177,21 @@ if __name__ == '__main__':
           rospy.logdebug(f'AruCo id {marker_id[0]} not in instruments dictionary.')
         else:
 
-          t = TransformStamped()
-          t.header.frame_id = 'camera'
-          t.header.stamp = rospy.Time.now()
-          t.child_frame_id = instruments_dictionary[marker_id[0]]
-          t.transform.translation.x = tvecs[i][0][0]
-          t.transform.translation.y = tvecs[i][0][1]
-          t.transform.translation.z = tvecs[i][0][2]
+          # Create our pose object of the aruco code
+          aruco_pose = PoseStamped()
+          aruco_pose.header.frame_id = instruments_dictionary[marker_id[0]]
+          aruco_pose.header.stamp = rospy.Time.now()
+          aruco_pose.transform.translation.x = tvecs[i][0][0]
+          aruco_pose.transform.translation.y = tvecs[i][0][1]
+          aruco_pose.transform.translation.z = tvecs[i][0][2]
+          aruco_pose.transform.rotation.x = quat[0]
+          aruco_pose.transform.rotation.y = quat[1]
+          aruco_pose.transform.rotation.z = quat[2]
+          aruco_pose.transform.rotation.w = quat[3]
 
-          t.transform.rotation.x = quat[0]
-          t.transform.rotation.y = quat[1]
-          t.transform.rotation.z = quat[2]
-          t.transform.rotation.w = quat[3]
+          aruco_poses.poses.append(aruco_pose)
 
-          br.sendTransform([t])
+        aruco_poses_pub.publish(aruco_poses)
 
         # Draw the axes on the marker
         cv.aruco.drawAxis(frame, mtx, dst, rvecs[i], tvecs[i], 0.03)

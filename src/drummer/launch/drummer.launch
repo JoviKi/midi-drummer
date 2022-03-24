@@ -5,5 +5,10 @@
 
     <node name="pose_estimation" pkg="drummer" type="pose_estimation" output="screen">
     </node>
+
+    <!-- replaced by intialize_everything -->
+    <!-- <node name="camera_to_base" pkg="drummer" type="static_transform_publisher" args="1 0 0 0 0 0 1 base camera 100"> 
+    </node>
+ -->
     
 </launch>

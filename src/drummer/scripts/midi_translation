@@ -17,7 +17,7 @@ import time
 import rospy
 import tf2_ros
 import tf2_geometry_msgs
-from geometry_msgs.msg import PoseStamped,Pose
+from geometry_msgs.msg import PoseStamped, Pose, TransformStamped
 
 # Robot interface
 import actionlib
@@ -31,6 +31,9 @@ from cartesian_control_msgs.msg import (
     FollowCartesianTrajectoryGoal,
     CartesianTrajectoryPoint,
 )
+
+# Local imports
+from drummer.msg import PoseStampedArray
 
 # creating dictionary for translation of number of note to name of instrument
 instruments_dictionary = {
@@ -176,14 +179,95 @@ class TrajectoryClient:
         srv.strictness = SwitchControllerRequest.BEST_EFFORT
         self.switch_srv(srv)
 
+    def ask_confirmation(self):
+        """Ask the user for confirmation. This function is obviously not necessary, but makes sense
+        in a testing script when you know nothing about the user's setup."""
+        confirmed = False
+        valid = False
+        while not valid:
+            input_str = input(
+                "Please confirm that the robot path is clear of obstacles.\n"
+                "Keep the EM-Stop available at all times. You are executing\n"
+                "the motion at your own risk. Please type 'y' to proceed or 'n' to abort: "
+            )
+            valid = input_str in ["y", "n"]
+            if not valid:
+                rospy.loginfo("Please confirm by entering 'y' or abort by entering 'n'")
+            else:
+                confirmed = input_str == "y"
+        if not confirmed:
+            rospy.loginfo("Exiting as requested by user.")
+            sys.exit(0)
+
+
+def initialize_everything(t_client: TrajectoryClient):
+    """
+    Measures the position of all drum components and publishes them into /tf_static
+    """
+    # 1. Move Robot into start pose
+    start_pose = geometry_msgs.Pose(
+        geometry_msgs.Vector3(0, 0, 0.8), geometry_msgs.Quaternion(1, 0, 0, 1))
+    start_time = 1.0
+    t_client.send_cartesian_trajectory(poses=[start_pose], timestamps=[start_time])
+
+    # 2. receive aruco codes in camera frame from aruco node
+    arucos = rospy.wait_for_message('aruco_codes', PoseStampedArray, 5) # TODO: switch from msg to service
+
+    # 3. convert start_pose from Pose datatype into camera-to-base-transform Transform
+    cam_to_base = TransformStamped()
+    cam_to_base.header.frame_id = 'camera'
+    cam_to_base.header.stamp = rospy.Time.now()
+    cam_to_base.child_frame_id = 'base'
+    cam_to_base.transform.translation.x = start_pose.position.x
+    cam_to_base.transform.translation.y = start_pose.position.y
+    cam_to_base.transform.translation.z = start_pose.position.z
+    cam_to_base.transform.rotation.x = start_pose.orientation.x
+    cam_to_base.transform.rotation.y = start_pose.orientation.y
+    cam_to_base.transform.rotation.z = start_pose.orientation.z
+    cam_to_base.transform.rotation.w = start_pose.orientation.w
+
+    # 4. Use camera-to-base-transform and bring all arucos into base frame
+    arucos_in_base = []
+    for aruco_pose in arucos.poses:
+        aruco_in_base = tf2_geometry_msgs.do_transform_pose(aruco_pose, cam_to_base)
+        arucos_in_base.append(aruco_in_base)
+        # TODO: make sure that the header is still equal to the component name (or aruco id)
+
+    # 5. turn all aruco poses into base-to-aruco-transsforms
+    aruco_transforms = []
+    for aruco_in_base in arucos_in_base:
+        base_to_aruco = PoseStamped()
+        base_to_aruco.header.frame_id = 'base'
+        base_to_aruco.header.stamp = rospy.Time.now()
+        base_to_aruco.child_frame_id = component_name
+        base_to_aruco.transform.translation.x = aruco_in_base.position.x
+        base_to_aruco.transform.translation.y = aruco_in_base.position.y
+        base_to_aruco.transform.translation.z = aruco_in_base.position.z
+        base_to_aruco.transform.rotation.x = aruco_in_base.orientation.x
+        base_to_aruco.transform.rotation.y = aruco_in_base.orientation.y
+        base_to_aruco.transform.rotation.z = aruco_in_base.orientation.z
+        base_to_aruco.transform.rotation.w = aruco_in_base.orientation.w
+
+        aruco_transforms.append(base_to_aruco)
+
+    # 6. publish static transform
+    br = tf2_ros.StaticTransformBroadcaster()
+    br.sendTransform(aruco_transforms)
+
 
 
 if __name__ == '__main__':
     rospy.init_node('midi_translation')
 
-    ##### Step 1: Load the Midi File #####
-
     t_client = TrajectoryClient()
+
+    ##### Step 0: Initialize Tf Tree based on aruco codes #####
+    tf_buffer = tf2_ros.Buffer()
+    tf_listener = tf2_ros.TransformListener(tf_buffer)
+    initialize_everything(t_client=t_client)
+    t_client.ask_confirmation()
+
+    ##### Step 1: Load the Midi File #####
     mid = MidiFile(os.path.join(SCRIPTDIR, '..', 'MIDI', 'samples', file_name), clip=True) 
 
     # removing duplicates of tracks
@@ -237,11 +321,10 @@ if __name__ == '__main__':
     stamp = time.time()
     last_time = midi_list[0][0]
 
-    tf_buffer = tf2_ros.Buffer()
-    tf_listener = tf2_ros.TransformListener(tf_buffer)
-
+    # This is just for debug purposes. Access via `rostopic echo hit`
     drum_publisher = rospy.Publisher('hit', PoseStamped, tcp_nodelay=True, queue_size=100)
 
+    # turn midi list into trajectoy
     poses = []
     timestamps = []
     for k, line in enumerate(midi_list):
@@ -257,7 +340,7 @@ if __name__ == '__main__':
         target_pose.header.stamp = rospy.Time.now()
         target_pose.pose.position.x = 0
         target_pose.pose.position.y = 0
-        target_pose.pose.position.z = 0.2
+        target_pose.pose.position.z = 0.2 # hover so much above the aruco codes
         target_pose.pose.orientation.x = 1
         target_pose.pose.orientation.y = 0
         target_pose.pose.orientation.z = 0
@@ -266,6 +349,8 @@ if __name__ == '__main__':
         try:
             trans = tf_buffer.lookup_transform('base', component_name, rospy.Time(0))
             target_pose = tf2_geometry_msgs.do_transform_pose(target_pose, trans)
+            target_pose.pose.position.y += 0.2 # take the stick into account
+
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             rospy.logerr(f'Cannot find {component_name}: {e}')
 
@@ -273,7 +358,8 @@ if __name__ == '__main__':
         hit_time = midi_list[k][0]
 
         ##### Part 3: fill the trajectory #####
-        poses.append(target_pose)
+        drum_publisher.publish(target_pose)
+        poses.append(target_pose.pose)
         timestamps.append(hit_time)
 
     # Start playing by sending the trajectory to the robot
