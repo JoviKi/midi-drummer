@@ -6,6 +6,8 @@
     <node name="pose_estimation" pkg="drummer" type="pose_estimation" output="screen">
     </node>
 
+    <node pkg="tf" type="static_transform_publisher" name="flange_to_camera" args="0.03 -0.085 0 0.1830127 0.6830127 -0.1830127 0.6830127 flange camera 100" />
+
     <!-- replaced by intialize_everything -->
     <!-- <node name="camera_to_base" pkg="drummer" type="static_transform_publisher" args="1 0 0 0 0 0 1 base camera 100"> 
     </node>

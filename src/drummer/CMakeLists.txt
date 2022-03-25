@@ -108,7 +108,7 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES drummer
+ #LIBRARIES drummer
  CATKIN_DEPENDS rospy message_runtime std_msgs geometry_msgs
 #  DEPENDS system_lib
 )

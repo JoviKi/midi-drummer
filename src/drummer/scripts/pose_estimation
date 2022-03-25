@@ -138,7 +138,8 @@ if __name__ == '__main__':
     # This method returns True/False as well
     # as the video frame.
     ret, frame = cap.read()  
-     
+    # frame = cv.rotate(frame, cv.ROTATE_180) # TODO: check if we need thi sor not
+  
     # Detect ArUco markers in the video frame
     (corners, marker_ids, rejected) = cv.aruco.detectMarkers(
       frame, this_aruco_dictionary, parameters=this_aruco_parameters,
@@ -181,22 +182,23 @@ if __name__ == '__main__':
           aruco_pose = PoseStamped()
           aruco_pose.header.frame_id = instruments_dictionary[marker_id[0]]
           aruco_pose.header.stamp = rospy.Time.now()
-          aruco_pose.transform.translation.x = tvecs[i][0][0]
-          aruco_pose.transform.translation.y = tvecs[i][0][1]
-          aruco_pose.transform.translation.z = tvecs[i][0][2]
-          aruco_pose.transform.rotation.x = quat[0]
-          aruco_pose.transform.rotation.y = quat[1]
-          aruco_pose.transform.rotation.z = quat[2]
-          aruco_pose.transform.rotation.w = quat[3]
+          aruco_pose.pose.position.x = tvecs[i][0][0]
+          aruco_pose.pose.position.y = tvecs[i][0][1]
+          aruco_pose.pose.position.z = tvecs[i][0][2]
+          aruco_pose.pose.orientation.x = quat[0]
+          aruco_pose.pose.orientation.y = quat[1]
+          aruco_pose.pose.orientation.z = quat[2]
+          aruco_pose.pose.orientation.w = quat[3]
 
           aruco_poses.poses.append(aruco_pose)
 
-        aruco_poses_pub.publish(aruco_poses)
-
         # Draw the axes on the marker
         cv.aruco.drawAxis(frame, mtx, dst, rvecs[i], tvecs[i], 0.03)
+
+      aruco_poses_pub.publish(aruco_poses)
      
     # Display the resulting frame
+    frame = cv.rotate(frame, cv.ROTATE_180)
     frame = imutils.resize(frame, width=1500)
     cv.imshow('frame', frame)
           
