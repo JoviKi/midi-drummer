@@ -346,13 +346,20 @@ if __name__ == '__main__':
         try:
             trans = tf_buffer.lookup_transform('base', component_name, rospy.Time(0))
             target_pose = tf2_geometry_msgs.do_transform_pose(target_pose, trans)
-            target_pose.pose.position.y -= 0 # take the stick into account
+            target_pose.pose.position.y += 0.26 # take the stick and some constant error into account
+            target_pose.pose.position.x -= 0.03 # Compensate my inability to find the actual bug for this translation error
 
-            # turn 90 degree by x and then 180 by z
-            target_pose.pose.orientation.x = 0
-            target_pose.pose.orientation.y = -0.7071067811865475
-            target_pose.pose.orientation.z = 0.7071067811865475
-            target_pose.pose.orientation.w = 0
+            # turn 90 degree by x and then 179 by z
+            # 179 so we turn back the reverse direction and don't get stuck
+            target_pose.pose.orientation.x = 0.0061706
+            target_pose.pose.orientation.y = -0.7070799
+            target_pose.pose.orientation.z = 0.7070799
+            target_pose.pose.orientation.w = 0.0061706
+
+            # target_pose.pose.orientation.x = 0.0308436
+            # target_pose.pose.orientation.y = -0.7064338
+            # target_pose.pose.orientation.z = 0.7064338
+            # target_pose.pose.orientation.w = 0.0308436
 
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             rospy.logerr(f'Cannot find {component_name}: {e}')
