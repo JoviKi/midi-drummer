@@ -135,6 +135,7 @@ if __name__ == '__main__':
   cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
 
   aruco_poses_pub = rospy.Publisher('aruco_poses', PoseStampedArray, queue_size=1, latch=False)
+  rate = rospy.Rate(10)
   while(not rospy.is_shutdown()):
   
     # Capture frame-by-frame
@@ -214,6 +215,7 @@ if __name__ == '__main__':
 
 
       aruco_poses_pub.publish(aruco_poses)
+      rate.sleep()
      
     # Display the resulting frame
     # frame = imutils.resize(frame)
