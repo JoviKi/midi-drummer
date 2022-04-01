@@ -131,13 +131,17 @@ if __name__ == '__main__':
   # Start the video stream
   cap = cv.VideoCapture(6)   #'6' it is for the robominds camera at the ur10e
   
+  cap.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
+  cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
+
   aruco_poses_pub = rospy.Publisher('aruco_poses', PoseStampedArray, queue_size=1, latch=False)
   while(not rospy.is_shutdown()):
   
     # Capture frame-by-frame
     # This method returns True/False as well
     # as the video frame.
-    ret, frame = cap.read()  
+    ret, frame = cap.read() 
+    # frame = imutils.resize(frame, width=1280, height=720)
     # frame = cv.rotate(frame, cv.ROTATE_180) # TODO: check if we need thi sor not
   
     # Detect ArUco markers in the video frame
@@ -173,11 +177,13 @@ if __name__ == '__main__':
         rotation_matrix[0:3, 0:3] = cv.Rodrigues(np.array(rvecs[i][0]))[0]
         r = Rotation.from_matrix(rotation_matrix[0:3, 0:3])
         quat = r.as_quat()   
+
+        # Draw the axes on the marker
+        cv.aruco.drawAxis(frame, mtx, dst, rvecs[i], tvecs[i], 0.03)
          
         if marker_id[0] not in instruments_dictionary:
           rospy.logdebug(f'AruCo id {marker_id[0]} not in instruments dictionary.')
         else:
-
           # Create our pose object of the aruco code
           aruco_pose = PoseStamped()
           aruco_pose.header.frame_id = instruments_dictionary[marker_id[0]]
@@ -189,17 +195,29 @@ if __name__ == '__main__':
           aruco_pose.pose.orientation.y = quat[1]
           aruco_pose.pose.orientation.z = quat[2]
           aruco_pose.pose.orientation.w = quat[3]
-
           aruco_poses.poses.append(aruco_pose)
 
-        # Draw the axes on the marker
-        cv.aruco.drawAxis(frame, mtx, dst, rvecs[i], tvecs[i], 0.03)
+          # rospy.loginfo(aruco_pose)
+
+      # #### Hard coded positions for testing purposes #####
+      # aruco_pose = PoseStamped()
+      # aruco_pose.header.frame_id = 'Fake'
+      # aruco_pose.header.stamp = rospy.Time.now()
+      # aruco_pose.pose.position.x = 0
+      # aruco_pose.pose.position.y = 0.0
+      # aruco_pose.pose.position.z = 0.80
+      # aruco_pose.pose.orientation.x = 0
+      # aruco_pose.pose.orientation.y = 0
+      # aruco_pose.pose.orientation.z = 0
+      # aruco_pose.pose.orientation.w = 1
+      # aruco_poses.poses.append(aruco_pose)
+
 
       aruco_poses_pub.publish(aruco_poses)
      
     # Display the resulting frame
+    # frame = imutils.resize(frame)
     frame = cv.rotate(frame, cv.ROTATE_180)
-    frame = imutils.resize(frame, width=1500)
     cv.imshow('frame', frame)
           
     # If "q" is pressed on the keyboard, 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from re import I
 from mido import MidiFile
 import os
@@ -183,7 +183,7 @@ class TrajectoryClient:
         in a testing script when you know nothing about the user's setup."""
         confirmed = False
         valid = False
-        while not valid:
+        while not valid and not rospy.is_shutdown():
             input_str = input(
                 "Please confirm that the robot path is clear of obstacles.\n"
                 "Keep the EM-Stop available at all times. You are executing\n"
@@ -203,7 +203,7 @@ def initialize_everything(t_client: TrajectoryClient):
     """
     Measures the position of all drum components and publishes them into /tf_static
     """
-    # 1. Move Robot into start pose and define camera pose
+    # 1. Move Robot into start pose
     start_pose = geometry_msgs.Pose(
         geometry_msgs.Vector3(0, -0.5, 0.8), geometry_msgs.Quaternion(0.7071067811865475, 0, 0, 0.7071067811865475))
     start_time = 1.0
@@ -337,7 +337,7 @@ if __name__ == '__main__':
         target_pose.header.stamp = rospy.Time.now()
         target_pose.pose.position.x = 0
         target_pose.pose.position.y = 0
-        target_pose.pose.position.z = 0.2 # hover so much above the aruco codes
+        target_pose.pose.position.z = 0.15 # hover so much above the aruco codes
         target_pose.pose.orientation.x = 0
         target_pose.pose.orientation.y = 0
         target_pose.pose.orientation.z = 0
@@ -346,16 +346,19 @@ if __name__ == '__main__':
         try:
             trans = tf_buffer.lookup_transform('base', component_name, rospy.Time(0))
             target_pose = tf2_geometry_msgs.do_transform_pose(target_pose, trans)
-            target_pose.pose.position.y += 0.0 # take the stick into account
-            target_pose.pose.orientation.x = 0.7071067811865475
-            target_pose.pose.orientation.y = 0
-            target_pose.pose.orientation.z = 0
-            target_pose.pose.orientation.w = 0.7071067811865475
+            target_pose.pose.position.y -= 0 # take the stick into account
+
+            # turn 90 degree by x and then 180 by z
+            target_pose.pose.orientation.x = 0
+            target_pose.pose.orientation.y = -0.7071067811865475
+            target_pose.pose.orientation.z = 0.7071067811865475
+            target_pose.pose.orientation.w = 0
 
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             rospy.logerr(f'Cannot find {component_name}: {e}')
             continue
 
+        print(target_pose)
         ##### Part 2: Timing of the hit #####
         hit_time = midi_list[k][0] + 1 # +1 to delay the entire thing a bit
 

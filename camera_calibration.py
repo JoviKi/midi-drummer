@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 from __future__ import print_function  
-import cv2 
+import cv2
 import numpy as np 
 import glob # Used to get retrieve files that have a specified pattern
 import imutils # Used for resizing the sample images
@@ -13,7 +14,7 @@ square_size = 0.024 # Size, in meters, of a square side
   
 # Set termination criteria. We stop either when an accuracy is reached or when
 # we have finished a certain number of iterations.
-criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001) 
+criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.0001) 
  
 # Define real world coordinates for points in the 3D coordinate frame
 # Object points are (0,0,0), (1,0,0), (2,0,0) ...., (5,8,0)
@@ -63,18 +64,19 @@ def main():
       cv2.drawChessboardCorners(image, (nY, nX), corners_2, success)
   
       # Resize and display the image. Used for testing.
-      image = imutils.resize(image, width=1000)
+      # image = imutils.resize(image, width=1000)
       cv2.imshow("Image", image) 
       
       # Display the window for a short period. Used for testing.
-      cv2.waitKey(1000) 
-                                                                                                                      
+      cv2.waitKey(2) 
+
+  print('calibrating...')                                                                                  
   # Perform camera calibration to return the camera matrix, distortion coefficients, rotation and translation vectors etc 
   ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(object_points, 
                                                     image_points, 
-                                                    gray.shape[::-1], 
-                                                    None, 
-                                                    None)
+                                                    gray.shape[::-1],
+                                                    None, None
+                                                    )
  
   # Save parameters to a file
   cv_file = cv2.FileStorage('cal.yaml', cv2.FILE_STORAGE_WRITE)
@@ -85,7 +87,7 @@ def main():
   # Load the parameters from the saved file
   cv_file = cv2.FileStorage('cal.yaml', cv2.FILE_STORAGE_READ) 
   mtx = cv_file.getNode('K').mat()
-  dst = cv_file.getNode('D').mat()
+  dist = cv_file.getNode('D').mat()
   cv_file.release()
    
   # Display key parameter outputs of the camera calibration process
@@ -95,6 +97,15 @@ def main():
   print("\n Distortion coefficient:") 
   print(dist) 
     
+
+  # Source: https://docs.opencv.org/3.4/dc/dbb/tutorial_py_calibration.html
+  mean_error = 0
+  for i in range(len(object_points)):
+      imgpoints2, _ = cv2.projectPoints(object_points[i], rvecs[i], tvecs[i], mtx, dist)
+      error = cv2.norm(image_points[i], imgpoints2, cv2.NORM_L2)/len(imgpoints2)
+      mean_error += error
+  print( "total error: {}".format(mean_error/len(object_points)) )
+
   # Close all windows
   cv2.destroyAllWindows() 
       
