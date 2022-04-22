@@ -28,6 +28,7 @@ from cartesian_control_msgs.msg import (
 
 # Local imports
 from drummer.msg import PoseStampedArray
+from std_msgs.msg import Float64MultiArray
 
 # creating dictionary for translation of number of note to name of instrument
 instruments_dictionary = {
@@ -375,12 +376,22 @@ if __name__ == '__main__':
         timestamps.append(hit_time)
         target_components.append(component_name)
 
+
+    # Create and publish data for arduino
+    t_stamps = Float64MultiArray()
+    t_stamps.data = timestamps
+    hit_pub = rospy.Publisher('hittimes', Float64MultiArray, queue_size=1, latch=True)
     
     # Start playing by sending the trajectory to the robot
     for i, name in enumerate(target_components):
         rospy.loginfo(f'{name} @ {timestamps[i]}')
     t_client = TrajectoryClient()
     t_client.ask_confirmation()
+
+    # send trigger times to arduino node
+    hit_pub.publish(t_stamps)
+
+    # Send trajectory with times to robot
     t_client.send_cartesian_trajectory(poses=poses, timestamps=timestamps)
 
 
