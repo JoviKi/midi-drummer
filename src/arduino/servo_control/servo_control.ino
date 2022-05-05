@@ -5,7 +5,7 @@
 SerialTransfer myTransfer;
 
 //Buffer
-int buf1 = 12000;
+int buf1 = 3000;
 int buf2 = 11;
 
 //Flag
