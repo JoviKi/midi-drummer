@@ -1,14 +1,19 @@
+#!/usr/bin/env python3
+
+from re import M
 import time
 from pySerialTransfer import pySerialTransfer as txfer
 import rospy
 import numpy as np
+import math as m
+
 
 flag0 = 0
 flag1 = 0
 
 #Array mit den OCR1B- und OCR2B-Werten
-#awrist =  [round(650*m.sin(i)+1500) for i in np.arange(0, 2*3.1415, 0.001)] #Sinusförmige Bewegung 
-awrist = [1500, 6000] #Array für das Testen des Signals
+#awrist =  [round(1000*m.sin(i)+3000) for i in np.arange(0, 2*3.1415, 0.001)] #Sinusförmige Bewegung 
+awrist = [3000, 3000] #Array für das Testen des Signals
 athumb = [11, 80] #Array für das Testen des Signals
 
 #Array Index
@@ -24,6 +29,7 @@ def wrist(pw1):
     send_size = 0
     send_size = link.tx_obj(pw1)
     link.send(send_size, 0)
+    print(pw1)
 
     
 def thumb(pw2):
