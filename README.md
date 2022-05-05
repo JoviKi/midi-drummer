@@ -20,7 +20,7 @@ source ~/catkin_ws/devel/setup.bash
 ### Starten
 1. Arduino per USB an den Computer anschließen
 2. In der Arduino IDE den richtigen Port auswählen
-3. In servo_handler.py den richtigen Port eintragen (zB: '/dev/ttyACM0')
+3. In servo_handler.py den richtigen Port eintragen (zB: '/dev/ttyUSB0')
 4. In servo_handler.py die Listcomprehension für die Sinusförmige Bewegung auskommentieren
 5. Sketch  hochladen
 6. In einem Terminal auf dem PC: 
@@ -36,3 +36,7 @@ rosrun servo_handler servo_handler.py
 
 pySerialTransfer und die Arduino IDE können den Serial Port nicht gleichzeitig benützen. 
 Um ein neues Programm auf den Arduino aufzuspielen, muss servo_handler.py beendet werden.
+
+
+Start driver for ur10e with calibration file 
+roslaunch ur_robot_driver ur10e_bringup.launch robot_ip:=192.168.0.101 kinematics_config:=$(rospack find ur_calibration)/my_robot_calibration.yaml
