@@ -338,7 +338,7 @@ if __name__ == '__main__':
         target_pose.header.stamp = rospy.Time.now()
         target_pose.pose.position.x = 0
         target_pose.pose.position.y = 0
-        target_pose.pose.position.z = 0.15 # hover so much above the aruco codes
+        target_pose.pose.position.z = 0.10 # hover so much above the aruco codes
         target_pose.pose.orientation.x = 0
         target_pose.pose.orientation.y = 0
         target_pose.pose.orientation.z = 0
