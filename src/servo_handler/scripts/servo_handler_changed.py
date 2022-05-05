@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import time
 from pySerialTransfer import pySerialTransfer as txfer
 import rospy
