@@ -96,8 +96,8 @@ def main():
   
   print("\n Distortion coefficient:") 
   print(dist) 
-    
-
+  
+  # Print metrics about the quality of the calibration
   # Source: https://docs.opencv.org/3.4/dc/dbb/tutorial_py_calibration.html
   mean_error = 0
   for i in range(len(object_points)):

@@ -10,7 +10,6 @@ import os
 
 # Ros imports
 from geometry_msgs.msg import PoseStamped
-import tf2_ros
 import rospy
 import imutils
  
@@ -99,14 +98,14 @@ instruments_dictionary = {
 80: 'Mute Triangle',
 81: 'Open Triangle' 
 }
- 
-   
-if __name__ == '__main__':
-  """
-  Main method of the program.
-  """
 
+if __name__ == '__main__':
+  # Start of the main program
+
+  # Initialize the ROS node
   rospy.init_node('aruco_tf_broadcaster')
+
+  # Provide the user with the script manual
   print(__doc__)
 
   # Check that we have a valid ArUco marker
@@ -142,8 +141,6 @@ if __name__ == '__main__':
     # This method returns True/False as well
     # as the video frame.
     ret, frame = cap.read() 
-    # frame = imutils.resize(frame, width=1280, height=720)
-    # frame = cv.rotate(frame, cv.ROTATE_180) # TODO: check if we need thi sor not
   
     # Detect ArUco markers in the video frame
     (corners, marker_ids, rejected) = cv.aruco.detectMarkers(
@@ -198,8 +195,6 @@ if __name__ == '__main__':
           aruco_pose.pose.orientation.w = quat[3]
           aruco_poses.poses.append(aruco_pose)
 
-          # rospy.loginfo(aruco_pose)
-
       # #### Hard coded positions for testing purposes #####
       # aruco_pose = PoseStamped()
       # aruco_pose.header.frame_id = 'Fake'
@@ -213,9 +208,10 @@ if __name__ == '__main__':
       # aruco_pose.pose.orientation.w = 1
       # aruco_poses.poses.append(aruco_pose)
 
-
+      # Publish the list of detected component poses. 
+      # frame_ids are set to the according value in instruments_dictionary
       aruco_poses_pub.publish(aruco_poses)
-      rate.sleep()
+      rate.sleep() # executes the publishing
      
     # Display the resulting frame
     # frame = imutils.resize(frame)

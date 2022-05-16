@@ -30,7 +30,7 @@ from cartesian_control_msgs.msg import (
 from drummer.msg import PoseStampedArray
 from std_msgs.msg import Float64MultiArray
 
-# creating dictionary for translation of number of note to name of instrument
+# Creating dictionary for translation of number of note to name of instrument
 instruments_dictionary = {
 35: 'Bass Drum 2',
 36: 'Bass Drum 1',
@@ -81,7 +81,7 @@ instruments_dictionary = {
 80: 'Mute Triangle',
 81: 'Open Triangle' }
 
-# printing name and type, aswell as numbers of tracks and messages of file
+# Defining music file
 file_name = 'AC_DC_-_Highway_to_hell.mid'
 SCRIPTDIR = os.path.dirname(__file__)
 
@@ -211,10 +211,10 @@ def initialize_everything(t_client: TrajectoryClient):
 
     t_client.send_cartesian_trajectory(poses=[start_pose], timestamps=[start_time])
 
-    # 2. receive aruco codes in camera frame from aruco node
+    # 2. Receive aruco codes in camera frame from aruco node
     arucos = rospy.wait_for_message('aruco_poses', PoseStampedArray, 5) # TODO: switch from msg to service
 
-    # 3. convert start_pose from Pose datatype into camera-to-base-transform Transform
+    # 3. Convert start_pose from Pose datatype into camera-to-base-transform Transform
     cam_to_base = tf_buffer.lookup_transform('base', 'camera', rospy.Time(0))
 
     # 4. Use camera-to-base-transform and bring all arucos into base frame
@@ -226,7 +226,7 @@ def initialize_everything(t_client: TrajectoryClient):
         arucos_in_base.append(aruco_in_base)
         # TODO: make sure that the header is still equal to the component name (or aruco id)
 
-    # 5. turn all aruco poses into base-to-aruco-transforms
+    # 5. Turn all aruco poses into base-to-aruco-transforms
     aruco_transforms = []
     for i, aruco_in_base in enumerate(arucos_in_base):
         rospy.loginfo(f"Found transform to {frame_names[i]}")
@@ -262,41 +262,43 @@ if __name__ == '__main__':
     ##### Step 1: Load the Midi File #####
     mid = MidiFile(os.path.join(SCRIPTDIR, '..', 'MIDI', 'samples', file_name), clip=True) 
 
-    # removing duplicates of tracks
+    # Removing duplicates of tracks
     message_numbers = []
     duplicates = []
 
-    for track in mid.tracks:                    # searching track by track in MIDI file
-        if len(track) in message_numbers:       # if number of messages in a track equals number of messages from a previous track
-            duplicates.append(track)            # then add to duplicates
+    for track in mid.tracks:                    # Searching track by track in MIDI file
+        if len(track) in message_numbers:       # If number of messages in a track equals number of messages from a previous track
+            duplicates.append(track)            # Then add to duplicates
         else:
             message_numbers.append(len(track))
 
-    for track in duplicates:                    # remove the duplicates
+    for track in duplicates:                    # Remove the duplicates
         mid.tracks.remove(track)
 
 
+    # Find the track of the drums in MIDI files via channel    
     wrong_tracks = []
-    # finding the track of the drums in MIDI files via channel    
-    for track in mid.tracks:                  # going through the tracks of the file
-        for msg in track:                                   # going through the messages in each track
-            if not msg.is_meta and (msg.channel != 9):      # checking non-meta messages and looking for the messages with channel = 9
+    for track in mid.tracks:                  # Going through the tracks of the file
+        for msg in track:                                   # Going through the messages in each track
+            if not msg.is_meta and (msg.channel != 9):      # Checking non-meta messages and looking for the messages with channel = 9
                 wrong_tracks.append(track)
                 break
 
+    # Remove all other tracks but drums
     for track in wrong_tracks:
         mid.tracks.remove(track)
 
+    # Save slim midi file for reading it later
     new_file_name = 'drums_only_{}'.format(file_name)
     mid.save('.\\MIDI\\samples\\{}'.format(new_file_name))
 
 
-    ##### Source: https://www.audiolabs-erlangen.de/resources/MIR/FMP/C1/C1S2_MIDI.html #####
-
+    # Read the slim midi file
+    # Source: https://www.audiolabs-erlangen.de/resources/MIR/FMP/C1/C1S2_MIDI.html
     midi_data = pretty_midi.PrettyMIDI('.\\MIDI\\samples\\{}'.format(new_file_name))
     midi_list = []
 
-    # creating a list with the information about start, end, pitch, velocity and name of instrument of every 'note' (part of the drums) of the instrument
+    # Creating a list with the information about start, end, pitch, velocity and name of instrument of every 'note' (part of the drums) of the instrument
     for instrument in midi_data.instruments:
         for note in instrument.notes:
             start = note.start
@@ -309,28 +311,28 @@ if __name__ == '__main__':
 
     ##### Step 2: Iterate through all midi notes and publish target poses #####
 
-    # printing the name of the 'note' of the instrument in the moment it is actually played
+    # Printing the name of the 'note' of the instrument in the moment it is actually played
     # This is just for debug purposes. Access via `rostopic echo hit`
     drum_publisher = rospy.Publisher('hit', PoseStamped, tcp_nodelay=True, queue_size=100)
 
-    # turn midi list into trajectoy
+    # Turn midi list into trajectoy
     poses = []
     timestamps = []
     busy_times = [0.0]
     target_components = []
-    for k, line in enumerate(midi_list):
+    for k, line in enumerate(midi_list): # 1 line refers to 1 drum event in the midi file
         if rospy.is_shutdown():
             break
 
         start, end, pitch, velocity, instrument = line
         component_name = instruments_dictionary[pitch]
 
-        # first come first serve
+        # First come first serve
         if abs(start - busy_times[-1]) < 0.0:
             rospy.loginfo(f'{component_name} ignored due to already occupied')
             continue
         else:
-            busy_times.append(start) # occupy this timeslot
+            busy_times.append(start) # Occupy this timeslot
 
         ##### Part 1: Finding the target pose #####
         target_pose = PoseStamped()
@@ -338,7 +340,7 @@ if __name__ == '__main__':
         target_pose.header.stamp = rospy.Time.now()
         target_pose.pose.position.x = 0
         target_pose.pose.position.y = 0
-        target_pose.pose.position.z = 0.10 # hover so much above the aruco codes
+        target_pose.pose.position.z = 0.10 # Hover so much above the aruco codes
         target_pose.pose.orientation.x = 0
         target_pose.pose.orientation.y = 0
         target_pose.pose.orientation.z = 0
@@ -347,16 +349,17 @@ if __name__ == '__main__':
         try:
             trans = tf_buffer.lookup_transform('base', component_name, rospy.Time(0))
             target_pose = tf2_geometry_msgs.do_transform_pose(target_pose, trans)
-            target_pose.pose.position.y += 0.26 # take the stick and some constant error into account
+            target_pose.pose.position.y += 0.26 # Take the stick and some constant error into account
             target_pose.pose.position.x -= 0.03 # Compensate my inability to find the actual bug for this translation error
 
-            # turn 90 degree by x and then 179 by z
+            # Turn 90 degree by x and then 179 by z
             # 179 so we turn back the reverse direction and don't get stuck
             target_pose.pose.orientation.x = 0.0061706
             target_pose.pose.orientation.y = -0.7070799
             target_pose.pose.orientation.z = 0.7070799
             target_pose.pose.orientation.w = 0.0061706
 
+            # # Alternatively use the 180 degree rotation, as soon as robot supports max rotation boundaries
             # target_pose.pose.orientation.x = 0.0308436
             # target_pose.pose.orientation.y = -0.7064338
             # target_pose.pose.orientation.z = 0.7064338
@@ -368,9 +371,10 @@ if __name__ == '__main__':
 
         print(target_pose)
         ##### Part 2: Timing of the hit #####
-        hit_time = midi_list[k][0] + 1 # +1 to delay the entire thing a bit
+        # +1s to offset the entire track, because the first note has to be in the future
+        hit_time = midi_list[k][0] + 1 
 
-        ##### Part 3: fill the trajectory #####
+        ##### Part 3: compose the trajectory data #####
         drum_publisher.publish(target_pose)
         poses.append(target_pose.pose)
         timestamps.append(hit_time)
@@ -388,7 +392,7 @@ if __name__ == '__main__':
     t_client = TrajectoryClient()
     t_client.ask_confirmation()
 
-    # send trigger times to arduino node
+    # Send trigger times to arduino node
     hit_pub.publish(t_stamps)
 
     # Send trajectory with times to robot
